@@ -4,7 +4,7 @@
  * Plugin Name: WooMS Multi Warehouse
  * Plugin URI: https://github.com/wpcraft-ru/wooms/issues/327
  * Description: Добавляет механизм сохранения остатков по множеству складов в метаполя продукта
- * Version: 1.2
+ * Version: 1.3
  */
 
 defined('ABSPATH') || exit; // Exit if accessed directly
@@ -15,8 +15,8 @@ defined('ABSPATH') || exit; // Exit if accessed directly
 class MultiWH
 {
     static public $config_wh_list = [
-        'г. Пермь ул. Героев Хасана, 50/1 Самовывоз (Бесплатно)'   => 'woomsxt_perm',
-        'с. Лобаново ул. Центральная 11Б Самовывоз (Бесплатно)'    => 'woomsxt_lobanovo',
+        'г. Пермь ул. Героев Хасана, 50/1 Самовывоз'   => 'woomsxt_perm',
+        'с. Лобаново ул. Центральная 11Б Самовывоз'    => 'woomsxt_lobanovo',
     ];
 
 
@@ -38,6 +38,9 @@ class MultiWH
         add_action('woocommerce_product_after_variable_attributes', array(__CLASS__, 'variation_settings_fields'), 10, 3);
         add_action('woocommerce_save_product_variation', array(__CLASS__, 'save_variation_settings_fields'), 10, 2);
         add_filter('woocommerce_available_variation', array(__CLASS__, 'load_variation_settings_fields'));
+
+        // Добавляем поля в Rest API
+        add_action('rest_api_init', array(__CLASS__, 'handle_location'));
     }
 
 
@@ -156,8 +159,9 @@ class MultiWH
         $stock = $product->get_stock_quantity();
         $product_id = $product->get_id();
         $content = '';
-
-        if ($product->is_in_stock() && $product->managing_stock()) {            
+        //var_dump($product->managing_stock());
+        //if ($product->is_in_stock() && $product->managing_stock()) {
+        if ($product->is_in_stock()) {
             $content = '<table>
                 <tr>
                     <td>
@@ -165,7 +169,7 @@ class MultiWH
                     </td>
                     <td>
                         <ul>
-                            <li>'. $stock . '(доступно по предзаказу)</li>
+                            <li><span class="rb59-available-product-count">' . $stock . '</span>(доступно по предзаказу)</li>
                         </ul>
                     </td>
                 </tr>
@@ -176,13 +180,13 @@ class MultiWH
                     <td>
                         <br>
                         <ul>';
-            
+
             foreach (self::$config_wh_list as $name => $key) {
                 $count = get_post_meta($product_id, $key, true);
                 if ($count > 0) {
-                    $content .= '<li>' . $name . ' : ' . $count . ' (доступно по предзаказу)</li>';
+                    $content .= '<li>' . $name . ' : <span class="rb59-available-product-count">' . $count . '</span> (доступно по предзаказу)</li>';
                 } else {
-                    $content .= '<li>' . $name . ' (доступно по предзаказу)</li>';
+                    $content .= '<li>' . $name . ' : <span class="rb59-available-product-count">0</span> (доступно по предзаказу)</li>';
                 }
             }
 
@@ -190,7 +194,6 @@ class MultiWH
                     </td>
                 </tr>
             </table>';
-
         }
 
         return $content;
@@ -237,15 +240,16 @@ class MultiWH
     /**
      * Add field for variations
      */
-    public static function variation_settings_fields( $loop, $variation_data, $variation ) {
+    public static function variation_settings_fields($loop, $variation_data, $variation)
+    {
         woocommerce_wp_text_input(
             array(
                 'id'            => "woomsxt_perm{$loop}",
                 'name'          => "woomsxt_perm[{$loop}]",
-                'value'         => get_post_meta( $variation->ID, 'woomsxt_perm', true ),
-                'label'         => __( 'Остатки на складе Пермь', 'woocommerce' ),
+                'value'         => get_post_meta($variation->ID, 'woomsxt_perm', true),
+                'label'         => __('Остатки на складе Пермь', 'woocommerce'),
                 'desc_tip'      => true,
-                'description'   => __( 'Остатки на складе Пермь.', 'woocommerce' ),
+                'description'   => __('Остатки на складе Пермь.', 'woocommerce'),
                 'wrapper_class' => 'form-row form-row-full',
             )
         );
@@ -263,13 +267,14 @@ class MultiWH
     }
 
     /**
-     * Save data for varioations
+     * Save data for variations
      */
-    public static function save_variation_settings_fields( $variation_id, $loop ) {
-        $woomsxt_perm = $_POST['woomsxt_perm'][ $loop ];
+    public static function save_variation_settings_fields($variation_id, $loop)
+    {
+        $woomsxt_perm = $_POST['woomsxt_perm'][$loop];
 
-        if ( ! empty($woomsxt_perm ) ) {
-            update_post_meta( $variation_id, 'woomsxt_perm', esc_attr($woomsxt_perm ));
+        if (!empty($woomsxt_perm)) {
+            update_post_meta($variation_id, 'woomsxt_perm', esc_attr($woomsxt_perm));
         }
 
         $woomsxt_lobanovo = $_POST['woomsxt_lobanovo'][$loop];
@@ -282,12 +287,36 @@ class MultiWH
     /**
      * Load data for variation
      */
-    public static function load_variation_settings_fields( $variation ) {     
-        $variation['woomsxt_perm'] = get_post_meta( $variation[ 'variation_id' ], 'woomsxt_perm', true );
+    public static function load_variation_settings_fields($variation)
+    {
+        $variation['woomsxt_perm'] = get_post_meta($variation['variation_id'], 'woomsxt_perm', true);
         $variation['woomsxt_lobanovo'] = get_post_meta($variation['variation_id'], 'woomsxt_lobanovo', true);
 
         return $variation;
     }
+
+    
+    /**
+     *  Add remote stock field to REST API
+     */
+    public static function handle_location(){
+        register_rest_field(
+            'product', 
+            'remote_stock', 
+            array(
+                'get_callback' => function ($object) {
+                    $remote_stock = [];
+                    foreach (self::$config_wh_list as $name => $key) {
+                        $remote_stock[$key] = get_post_meta($object['id'], $key, true);
+                    }
+                    return $remote_stock;
+                },
+                'update_callback' => null,
+                'schema'          => null,
+            )
+        );
+    }   
+
 }
 
 MultiWH::init();
