@@ -40,7 +40,7 @@ class MultiWH
         add_filter('woocommerce_available_variation', array(__CLASS__, 'load_variation_settings_fields'));
 
         // Добавляем поля в Rest API
-        add_action('rest_api_init', array(__CLASS__, 'handle_location'));
+        add_action('rest_api_init', array(__CLASS__, 'handle_remote_stock'));
     }
 
 
@@ -299,7 +299,7 @@ class MultiWH
     /**
      *  Add remote stock field to REST API
      */
-    public static function handle_location(){
+    public static function handle_remote_stock(){
         register_rest_field(
             'product', 
             'remote_stock', 
