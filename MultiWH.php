@@ -4,7 +4,7 @@
  * Plugin Name: WooMS Multi Warehouse
  * Plugin URI: https://github.com/wpcraft-ru/wooms/issues/327
  * Description: Добавляет механизм сохранения остатков по множеству складов в метаполя продукта
- * Version: 1.3
+ * Version: 1.4
  */
 
 defined('ABSPATH') || exit; // Exit if accessed directly
@@ -17,6 +17,8 @@ class MultiWH
     static public $config_wh_list = [
         'г. Пермь ул. Героев Хасана, 50/1 Самовывоз'   => 'woomsxt_perm',
         'с. Лобаново ул. Центральная 11Б Самовывоз'    => 'woomsxt_lobanovo',
+        'Посылка 1-й Класс' => 'woomsxt_package_first_class',
+        'Курьер' => 'woomsxt_courier',
     ];
 
 
@@ -39,10 +41,13 @@ class MultiWH
         add_action('woocommerce_save_product_variation', array(__CLASS__, 'save_variation_settings_fields'), 10, 2);
         add_filter('woocommerce_available_variation', array(__CLASS__, 'load_variation_settings_fields'));
 
-        // Добавляем поля в Rest API
-        add_action('rest_api_init', array(__CLASS__, 'handle_remote_stock'));
-    }
+        // simple product metabox fields
+        add_action('woocommerce_product_options_advanced', array( __CLASS__, 'simple_product_settings_fields'));
+        //add_action('woocommerce_process_product_meta', array( __CLASS__, 'save_simple_product_settings_fields'));
 
+        // Добавляем поля в Rest API
+        //add_action('rest_api_init', array(__CLASS__, 'handle_remote_stock'));
+    }
 
 
     /**
@@ -264,6 +269,28 @@ class MultiWH
                 'wrapper_class' => 'form-row form-row-full',
             )
         );
+        woocommerce_wp_text_input(
+            array(
+                'id'            => "woomsxt_package_first_class{$loop}",
+                'name'          => "woomsxt_package_first_class[{$loop}]",
+                'value'         => get_post_meta($variation->ID, 'woomsxt_courier', true),
+                'label'         => __('Посылка 1-й Класс', 'woocommerce'),
+                'desc_tip'      => true,
+                'description'   => __('Посылка 1-й Класс', 'woocommerce'),
+                'wrapper_class' => 'form-row form-row-full',
+            )
+        );
+        woocommerce_wp_text_input(
+            array(
+                'id'            => "woomsxt_courier{$loop}",
+                'name'          => "woomsxt_courier[{$loop}]",
+                'value'         => get_post_meta($variation->ID, 'woomsxt_package_first_class', true),
+                'label'         => __('Курьер', 'woocommerce'),
+                'desc_tip'      => true,
+                'description'   => __('Курьер', 'woocommerce'),
+                'wrapper_class' => 'form-row form-row-full',
+            )
+        );
     }
 
     /**
@@ -317,6 +344,35 @@ class MultiWH
         );
     }   
 
+    /**
+     * Add field for variations
+     */
+    public static function simple_product_settings_fields() {
+        global $thepostid;
+        if ( get_product($thepostid)->is_type('simple')) {
+            echo '<div class="options_group">';
+            echo '<h3>' . __('Остатки на складах', 'woocommerce' ) . '</h3>';
+            foreach ( self::$config_wh_list as $label => $key ) {
+                woocommerce_wp_text_input(
+                    array(
+                        'id' => $key,
+                        'label' => __( $label, 'woocommerce' ),
+                        'desc_tip' => 'true',
+                        'description' => 'Здесь отображаются остатки из Мой склад на складе ' . $label,
+                    )
+                );
+            }
+            echo '</div>';
+        }
+    }
+
+    public static function save_product_settings_fields($post_id) {
+        $custom_product_meta_field = $_POST['_custom_product_meta_field'];
+        if ( ! empty( $custom_product_meta_field ) ) {
+            update_post_meta( $post_id, '_custom_product_meta_field', esc_attr( $custom_product_meta_field ) );
+        }
+    }
+    
 }
 
 MultiWH::init();
