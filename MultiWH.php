@@ -16,13 +16,7 @@
   */
  class MultiWH
  {
-     static public $config_wh_list = [
-         'г. Пермь ул. Героев Хасана, 50/1 Самовывоз'   => 'woomsxt_perm',
-         'с. Лобаново ул. Центральная 11Б Самовывоз'    => 'woomsxt_lobanovo',
-         'Посылка 1-й Класс' => 'woomsxt_package_first_class',
-         'Курьер' => 'woomsxt_courier',
-     ];
- 
+     static public $config_wh_list = [];
  
      /**
       * The init
@@ -30,17 +24,31 @@
      public static function init()
      {
  
-         add_action('plugins_loaded', function () {
-             add_filter('wooms_product_save', array(__CLASS__, 'update_product'), 30, 2);
-             add_filter('wooms_variation_save', array(__CLASS__, 'update_variation'), 30, 2);
-         });
+        add_action('plugins_loaded', function () {
+            add_filter('wooms_product_save', array(__CLASS__, 'update_product'), 30, 2);
+            add_filter('wooms_variation_save', array(__CLASS__, 'update_variation'), 30, 2);
+            if (function_exists('wooms_request')){
+                $url  = 'https://online.moysklad.ru/api/remap/1.2/entity/store';
+                $data = wooms_request($url);
+                if (!empty($data['rows'])) {
+                    $wh_list = [];
+                    foreach ($data['rows'] as $row) :
+                        $wh_list[$row['name']] = $row['id'];
+                    endforeach;
+                    self::$config_wh_list = $wh_list;
+                }
+            }
+
+            #UPDATE wp_postmeta SET meta_key = REPLACE(meta_key, 'woomsxt_perm', 'fc502d94-8c5c-11eb-0a80-096500033dbd');
+            #UPDATE wp_postmeta SET meta_key = REPLACE(meta_key, 'woomsxt_lobanovo', '7e282e8c-1335-11e8-9109-f8fc00014cc5');
+        });
  
          add_filter('woocommerce_get_availability_text', array(__CLASS__,  'woomsxt_before_add_to_cart_btn'), 99, 2);
          add_filter('wooms_order_send_data', array(__CLASS__, 'add_data_to_order'), 10, 2);
  
          // поля для вариации
          add_action('woocommerce_product_after_variable_attributes', array(__CLASS__, 'variation_settings_fields'), 10, 3);
-         add_action('woocommerce_save_product_variation', array(__CLASS__, 'save_variation_settings_fields'), 10, 2);
+         //add_action('woocommerce_save_product_variation', array(__CLASS__, 'save_variation_settings_fields'), 10, 2);
          add_filter('woocommerce_available_variation', array(__CLASS__, 'load_variation_settings_fields'));
  
          // simple product metabox fields
@@ -50,16 +58,7 @@
  
          // TODO Добавляем поля в Rest API
          //add_action('rest_api_init', array(__CLASS__, 'handle_remote_stock'));
-     }
- 
-     // TODO - доработать
-     public static function get_config_wh_list() {
-         $option = get_option('config_wh_list');
-         if (!empty($option)) {
-             self::$config_wh_list = $option;
-         }
-         return self::$config_wh_list;
-     }
+    }
  
      /**
       * Update product then import from MS
@@ -176,8 +175,6 @@
          $stock = $product->get_stock_quantity();
          $product_id = $product->get_id();
          $content = '';
-         //var_dump($product->managing_stock());
-         //if ($product->is_in_stock() && $product->managing_stock()) {
          if ($product->is_in_stock()) {
              $content = '<table>
                  <tr>
@@ -221,37 +218,46 @@
       */
      public static function add_data_to_order($data, $order_id)
      {
-         $order = wc_get_order($order_id);
-         $shipping_data_method_title = '';
+        $order = wc_get_order($order_id);
+        $shipping_data_method_title = '';
+        $store_id = '';
+        // проверяем есть метод доставки в заказе 
+        foreach ($order->get_items('shipping') as $item_id => $item) {
+            $item_data = $item->get_data();
+            $shipping_data_method_title = $item_data['method_title'];
+        }
+        // Если нет метода доставки 
+        if (empty($shipping_data_method_title)) {
+            return $data;
+        }
+        
+        // Получаем все склады из МС через api
+        $url_wh  = 'https://online.moysklad.ru/api/remap/1.2/entity/store';
+        $data_wh = wooms_request($url_wh);
+        if (empty($data_wh['rows'])) {
+            return $data;
+        }
  
-         foreach ($order->get_items('shipping') as $item_id => $item) {
-             $item_data = $item->get_data();
-             $shipping_data_method_title = $item_data['method_title'];
-         }
- 
-         if (empty($shipping_data_method_title)) {
-             return;
-         }
- 
-         $url_wh  = 'https://online.moysklad.ru/api/remap/1.2/entity/store';
-         $data_wh = wooms_request($url_wh);
-         if (empty($data_wh['rows'])) {
-             return;
-         }
- 
-         foreach ($data_wh['rows'] as $row) :
-             $store_name =  $row['name'];
-             if ($shipping_data_method_title == $store_name) :
-                 $store_id = $row['id'];
-             endif;
-         endforeach;
-         $url = sprintf('https://online.moysklad.ru/api/remap/1.2/entity/store/%s', $store_id);
-         $data['store']['meta'] = array(
-             "href" => $url,
-             "type" => "store",
-         );
- 
-         return $data;
+        // Если в ответе из МС есть склад имя которого совпадает с методом доставки, 
+        // устанавливаем $store_id как склад в текущем заказе
+        foreach ($data_wh['rows'] as $row) :
+            $store_name =  $row['name'];
+            if ($shipping_data_method_title == $store_name) :
+                $store_id = $row['id'];
+            endif;
+        endforeach;
+
+        // Проверяем $store_id, если установлен - значит надо добавить его в запрос, 
+        // чтобы заказ ушел на нужный склад
+        if (!empty($store_id)) {
+            $url = sprintf('https://online.moysklad.ru/api/remap/1.2/entity/store/%s', $store_id);
+            $data['store']['meta'] = array(
+                "href" => $url,
+                "type" => "store",
+            );
+        }
+
+        return $data;
      }
  
      /**
@@ -267,7 +273,7 @@
                      'value' => get_post_meta($variation->ID, $id, true),
                      'label' => __($label, 'woocommerce'),
                      'desc_tip' => true,
-                     'description' => __($label, 'woocommerce'),
+                     'description' => 'Здесь отображаются остатки из Мой склад на складе ' . $label,
                      'wrapper_class' => 'form-row form-row-full',
                  )
              );
@@ -323,7 +329,7 @@
      }   
  
      /**
-      * Add field for variations
+      * Add field for simple product
       */
      public static function simple_product_settings_fields() {
          global $thepostid;
@@ -341,13 +347,6 @@
                  );
              }
              echo '</div>';
-         }
-     }
- 
-     public static function save_product_settings_fields($post_id) {
-         $custom_product_meta_field = $_POST['_custom_product_meta_field'];
-         if ( ! empty( $custom_product_meta_field ) ) {
-             update_post_meta( $post_id, '_custom_product_meta_field', esc_attr( $custom_product_meta_field ) );
          }
      }
      
