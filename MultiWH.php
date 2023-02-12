@@ -4,7 +4,7 @@
  * Plugin Name: WooMS Multi Warehouse
  * Plugin URI: https://github.com/wpcraft-ru/wooms/issues/327
  * Description: Добавляет механизм сохранения остатков по множеству складов в метаполя продукта
- * Version: 1.4
+ * Version: 1.4.01
  */
 
  defined('ABSPATH') || exit; // Exit if accessed directly
@@ -198,9 +198,9 @@
              foreach (self::$config_wh_list as $name => $key) {
                  $count = get_post_meta($product_id, $key, true);
                  if ($count > 0) {
-                     $content .= '<li>' . $name . ' : <span class="rb59-available-product-count">' . $count . '</span> (доступно по предзаказу)</li>';
+                     $content .= '<li> <span class="rb59-available-product-count">' . $count . '</span> ' . $name . ' :  (доступно по предзаказу)</li>';
                  } else {
-                     $content .= '<li>' . $name . ' : <span class="rb59-available-product-count">0</span> (доступно по предзаказу)</li>';
+                     $content .= '<li> <span class="rb59-available-product-count">0</span> ' . $name . ' :  (доступно по предзаказу)</li>';
                  }
              }
  
