@@ -2,9 +2,16 @@
 
 /**
  * Plugin Name: WooMS Multi Warehouse
- * Plugin URI: https://github.com/wpcraft-ru/wooms/issues/327
+ * Plugin URI: https://github.com/evgrezanov/WooMS-Multi-Warehouse
  * Description: Добавляет механизм сохранения остатков по множеству складов в метаполя продукта
- * Version: 1.4.01
+ * Author: redmonkey73
+ * Author URI: https://github.com/evgrezanov/
+ * Developer: redmonkey73
+ * Developer URI: https://github.com/evgrezanov/
+ * Version: 1.5
+ * PHP requires at least: 8.1
+ * WP requires at least: 6.0
+ * Tested up to: 6.4.2
  */
 
  defined('ABSPATH') || exit; // Exit if accessed directly
@@ -28,7 +35,7 @@
             add_filter('wooms_product_save', array(__CLASS__, 'update_product'), 30, 2);
             add_filter('wooms_variation_save', array(__CLASS__, 'update_variation'), 30, 2);
             if (function_exists('wooms_request')){
-                $url  = 'https://online.moysklad.ru/api/remap/1.2/entity/store';
+                $url  = 'https://api.moysklad.ru/api/remap/1.2/entity/store';
                 $data = wooms_request($url);
                 if (!empty($data['rows'])) {
                     $wh_list = [];
@@ -68,7 +75,7 @@
  
          $url = '';
          if ($product->get_type() == 'simple') {
-             $url = sprintf('https://online.moysklad.ru/api/remap/1.2/report/stock/bystore?filter=product=https://online.moysklad.ru/api/remap/1.2/entity/product/%s', $product->get_meta('wooms_id'));
+             $url = sprintf('https://api.moysklad.ru/api/remap/1.2/report/stock/bystore?filter=product=https://api.moysklad.ru/api/remap/1.2/entity/product/%s', $product->get_meta('wooms_id'));
          }
  
          if (empty($url)) {
@@ -118,7 +125,7 @@
          $url = '';
  
          if ($product->get_type() == 'variation') {
-             $url = sprintf('https://online.moysklad.ru/api/remap/1.2/report/stock/bystore?filter=variant=https://online.moysklad.ru/api/remap/1.2/entity/variant/%s', $product->get_meta('wooms_id'));
+             $url = sprintf('https://api.moysklad.ru/api/remap/1.2/report/stock/bystore?filter=variant=https://api.moysklad.ru/api/remap/1.2/entity/variant/%s', $product->get_meta('wooms_id'));
          }
  
          if (empty($url)) {
@@ -232,7 +239,7 @@
         }
         
         // Получаем все склады из МС через api
-        $url_wh  = 'https://online.moysklad.ru/api/remap/1.2/entity/store';
+        $url_wh  = 'https://api.moysklad.ru/api/remap/1.2/entity/store';
         $data_wh = wooms_request($url_wh);
         if (empty($data_wh['rows'])) {
             return $data;
@@ -250,7 +257,7 @@
         // Проверяем $store_id, если установлен - значит надо добавить его в запрос, 
         // чтобы заказ ушел на нужный склад
         if (!empty($store_id)) {
-            $url = sprintf('https://online.moysklad.ru/api/remap/1.2/entity/store/%s', $store_id);
+            $url = sprintf('https://api.moysklad.ru/api/remap/1.2/entity/store/%s', $store_id);
             $data['store']['meta'] = array(
                 "href" => $url,
                 "type" => "store",
